@@ -104,21 +104,21 @@ with st.container(border=True):
         if len(st.session_state.captured_benchmarks) > 0:
             col_save1, col_save2, col_save3 = st.columns(3)
             with col_save1:
-                if st.button("➕ যোগ করুন", use_container_width=True):
+                if st.button("➕ বর্তমান স্যাম্পলগুলোর সাথে যোগ করুন", use_container_width=True):
                     existing_count = len([f for f in os.listdir(BENCHMARK_DIR)])
                     for i, img_bytes in enumerate(st.session_state.captured_benchmarks):
                         with open(os.path.join(BENCHMARK_DIR, f"master_cam_{existing_count + i + 1}.jpg"), "wb") as f: f.write(img_bytes)
                     st.session_state.captured_benchmarks = []; st.session_state.cam_key += 1
                     st.rerun()
             with col_save2:
-                if st.button("🔄 মুছে নতুন সেভ করুন", type="primary", use_container_width=True):
+                if st.button("🔄  আগের সব মুছে নতুন সেভ করুন", type="primary", use_container_width=True):
                     for f in os.listdir(BENCHMARK_DIR): os.remove(os.path.join(BENCHMARK_DIR, f))
                     for i, img_bytes in enumerate(st.session_state.captured_benchmarks):
                         with open(os.path.join(BENCHMARK_DIR, f"master_cam_{i+1}.jpg"), "wb") as f: f.write(img_bytes)
                     st.session_state.captured_benchmarks = []; st.session_state.cam_key += 1
                     st.rerun()
             with col_save3:
-                if st.button("❌ ক্যানসেল", use_container_width=True):
+                if st.button("❌ ক্যানসেল করুন/ রিটেক", use_container_width=True):
                     st.session_state.captured_benchmarks = []; st.session_state.cam_key += 1; st.rerun()
 
     st.markdown("---")
