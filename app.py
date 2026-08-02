@@ -63,7 +63,7 @@ st.markdown("""
         font-weight: 600; 
         text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
     ">
-        AI-Driven Automated Fabric Inspection & Quality Control System
+        Automated Fabric Inspection & Quality Control System
     </p>
 </div>
 """, unsafe_allow_html=True)
