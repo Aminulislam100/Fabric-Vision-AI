@@ -24,7 +24,7 @@ st.markdown("""
         🧵 Advanced Fabric Quality Checker
     </h1>
     <p style="color: #e0f2fe; margin: 10px 0 0 0; font-size: 15px; font-weight: 600; text-shadow: 1px 1px 3px rgba(0,0,0,0.5);">
-        AI-Driven Automated Inspection for Complex, Multi-shade & Striped Fabrics
+        Automated Inspection for Complex, Multi-shade & Striped Fabrics
     </p>
 </div>
 """, unsafe_allow_html=True)
