@@ -118,7 +118,7 @@ with st.container(border=True):
                     st.session_state.captured_benchmarks = []; st.session_state.cam_key += 1
                     st.rerun()
             with col_save3:
-                if st.button("❌ ক্যানসেল করুন/ রিটেক", use_container_width=True):
+                if st.button("❌ ক্যানসেল/রিটেক", use_container_width=True):
                     st.session_state.captured_benchmarks = []; st.session_state.cam_key += 1; st.rerun()
 
     st.markdown("---")
