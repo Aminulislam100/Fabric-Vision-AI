@@ -3,12 +3,33 @@ import cv2
 import numpy as np
 import streamlit as st
 import time
+import streamlit.components.v1 as components
 from skimage.metrics import structural_similarity as ssim
 
 # ==========================================
 # বেসিক সেটআপ ও কাস্টম CSS স্টাইল
 # ==========================================
 st.set_page_config(page_title="Advanced Fabric AI Checker", layout="wide")
+
+# JavaScript Hack: "Clear photo" বাটনকে "Add more sample" বানানো
+components.html(
+    """
+    <script>
+    const doc = window.parent.document;
+    function updateButtonText() {
+        const buttons = doc.querySelectorAll('button');
+        buttons.forEach(btn => {
+            if (btn.innerText === 'Clear photo') {
+                btn.innerText = '➕ Add more sample';
+            }
+        });
+    }
+    // Streamlit বারবার রিলোড হয়, তাই প্রতি 200ms পর পর চেক করে টেক্সট চেঞ্জ করবে
+    setInterval(updateButtonText, 200);
+    </script>
+    """,
+    height=0, width=0
+)
 
 st.markdown("""
 <style>
@@ -77,7 +98,7 @@ with st.container(border=True):
         if new_benchmarks:
             col_btn1, col_btn2 = st.columns(2)
             with col_btn1:
-                if st.button("➕ বর্তমান স্যাম্পলগুলোর সাথে যোগ করুন", use_container_width=True):
+                if st.button("➕ গ্যালারির ছবিগুলো যোগ করুন", use_container_width=True):
                     existing_count = len([f for f in os.listdir(BENCHMARK_DIR)])
                     for i, file in enumerate(new_benchmarks):
                         with open(os.path.join(BENCHMARK_DIR, f"master_{existing_count + i + 1}.jpg"), "wb") as f:
@@ -86,7 +107,7 @@ with st.container(border=True):
                     time.sleep(1)
                     st.rerun()
             with col_btn2:
-                if st.button("🔄 আগের সব মুছে শুধু এগুলো সেভ করুন", type="primary", use_container_width=True):
+                if st.button("🔄 আগের সব মুছে নতুন স্যাম্পল যোগ করুন", type="primary", use_container_width=True):
                     for f in os.listdir(BENCHMARK_DIR): os.remove(os.path.join(BENCHMARK_DIR, f))
                     for i, file in enumerate(new_benchmarks):
                         with open(os.path.join(BENCHMARK_DIR, f"master_{i+1}.jpg"), "wb") as f:
@@ -101,34 +122,33 @@ with st.container(border=True):
             if st.session_state.last_cam_hash != cam_bytes:
                 st.session_state.captured_benchmarks.append(cam_bytes)
                 st.session_state.last_cam_hash = cam_bytes
+        
+        # আমরা এখন ৩টি বাটন সরিয়ে শুধু 'ফাইনাল সেভ' এর বাটন রাখছি, কারণ "Add more sample" অটো কাজ করবে
         if len(st.session_state.captured_benchmarks) > 0:
-            col_save1, col_save2, col_save3 = st.columns(3)
+            st.info(f"📸 মোট {len(st.session_state.captured_benchmarks)} টি স্যাম্পল মেমোরিতে আছে।")
+            col_save1, col_save2 = st.columns(2)
             with col_save1:
-                if st.button("➕ যোগ করুন", use_container_width=True):
+                if st.button("✅ তোলা স্যাম্পলগুলো মেইন সিস্টেমে সেভ করুন", use_container_width=True):
                     existing_count = len([f for f in os.listdir(BENCHMARK_DIR)])
                     for i, img_bytes in enumerate(st.session_state.captured_benchmarks):
                         with open(os.path.join(BENCHMARK_DIR, f"master_cam_{existing_count + i + 1}.jpg"), "wb") as f: f.write(img_bytes)
                     st.session_state.captured_benchmarks = []; st.session_state.cam_key += 1
+                    st.success("সেভ হয়েছে!")
+                    time.sleep(1)
                     st.rerun()
             with col_save2:
-                if st.button("🔄 মুছে নতুন সেভ করুন", type="primary", use_container_width=True):
-                    for f in os.listdir(BENCHMARK_DIR): os.remove(os.path.join(BENCHMARK_DIR, f))
-                    for i, img_bytes in enumerate(st.session_state.captured_benchmarks):
-                        with open(os.path.join(BENCHMARK_DIR, f"master_cam_{i+1}.jpg"), "wb") as f: f.write(img_bytes)
-                    st.session_state.captured_benchmarks = []; st.session_state.cam_key += 1
-                    st.rerun()
-            with col_save3:
-                if st.button("❌ ক্যানসেল", use_container_width=True):
+                if st.button("❌ মেমোরির স্যাম্পলগুলো বাতিল করুন", use_container_width=True):
                     st.session_state.captured_benchmarks = []; st.session_state.cam_key += 1; st.rerun()
 
     st.markdown("---")
     updated_files = [f for f in os.listdir(BENCHMARK_DIR) if f.endswith(('.png', '.jpg', '.jpeg'))]
     if updated_files:
+        st.write("**📂 সেভ করা মাস্টার স্যাম্পলগুলো:**")
         cols = st.columns(min(len(updated_files), 5) if len(updated_files) > 0 else 1)
         for idx, file in enumerate(updated_files):
             with cols[idx % 5]:
                 st.image(os.path.join(BENCHMARK_DIR, file), caption=file, use_container_width=True)
-        if st.button("🗑️ সব মুছুন"):
+        if st.button("🗑️ মেইন সিস্টেম থেকে সব মুছুন"):
             for f in os.listdir(BENCHMARK_DIR): os.remove(os.path.join(BENCHMARK_DIR, f))
             st.rerun()
 
@@ -140,7 +160,7 @@ st.markdown("<br>", unsafe_allow_html=True)
 def get_image_features(image):
     h, w = image.shape[:2]
     
-    # ১. ৩×৩ স্পেশিয়াল কালার গ্রিড (৯টি সেক্টরে নিখুঁত কালার চেক)
+    # ৩×৩ স্পেশিয়াল কালার গ্রিড (৯টি সেক্টরে কালার চেক)
     h_step, w_step = h // 3, w // 3
     hist_features = []
     
@@ -155,12 +175,12 @@ def get_image_features(image):
             
     hist_flat = np.array(hist_features, dtype=np.float32)
 
-    # ২. SIFT ফিচার এক্সট্রাকশন (প্যাটার্ন ও রিপিটিং প্রিন্টের জন্য)
+    # SIFT ফিচার এক্সট্রাকশন
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     sift = cv2.SIFT_create(nfeatures=1500)
     kp, des = sift.detectAndCompute(gray, None)
     
-    # ৩. টেক্সচার ও মেটেরিয়াল ডেনসিটি
+    # টেক্সচার ও মেটেরিয়াল ডেনসিটি
     laplacian_var = cv2.Laplacian(gray, cv2.CV_64F).var()
     edges = cv2.Canny(gray, 100, 200)
     edge_density = np.sum(edges > 0) / (edges.shape[0] * edges.shape[1]) * 100
@@ -168,7 +188,7 @@ def get_image_features(image):
     return hist_flat, des, laplacian_var, edge_density, gray
 
 # ==========================================
-# মেইন পেজ - ধাপ ২: টেস্টিং বক্স
+# মেইন পেজ - ধাপ ২: টেস্টিং স্ক্যানার
 # ==========================================
 st.markdown("""
 <div style="background: linear-gradient(135deg, #065f46 0%, #047857 100%); padding: 16px 22px; border-radius: 14px 14px 0 0; color: white; font-weight: bold; font-size: 18px; box-shadow: 0 6px 15px rgba(4,120,87,0.35); border: 6px solid #047857; border-bottom: none;">
@@ -207,17 +227,14 @@ with st.container(border=True):
                 best_match_score = 0.0
                 best_match_path, best_match_name = "", ""
                 
-                # FLANN Matcher
                 index_params = dict(algorithm=1, trees=5)
                 search_params = dict(checks=50)
                 flann = cv2.FlannBasedMatcher(index_params, search_params)
                 
                 for name, b_path, b_hist, b_des, b_lap, b_edge, b_gray in benchmark_data:
-                    # ১. Color Score (Spatial 9 Grid)
                     color_score = cv2.compareHist(b_hist, cam_hist, cv2.HISTCMP_CORREL)
                     color_pct = max(0.0, color_score * 100.0)
                     
-                    # ২. Pattern Score (SIFT + FLANN)
                     pattern_pct = 0.0
                     if b_des is not None and cam_des is not None and len(b_des) >= 2 and len(cam_des) >= 2:
                         try:
@@ -232,15 +249,12 @@ with st.container(border=True):
                         except Exception:
                             pattern_pct = 0.0
                     
-                    # ৩. Structural Score (SSIM)
                     score_ssim, _ = ssim(b_gray, cam_gray, full=True)
                     ssim_pct = max(0.0, score_ssim * 100.0)
                     
-                    # ৪. Texture Score (GSM / Laplacian)
                     texture_diff = abs(b_lap - cam_lap)
                     texture_pct = max(0.0, 100.0 - (texture_diff / (b_lap + 1e-5) * 100.0))
                     
-                    # মোড অনুযায়ী ডায়নামিক ওয়েটেড স্কোর
                     if "শুধুমাত্র কালার/শেডিং" in inspection_mode:
                         final_score = color_pct
                     elif "শুধুমাত্র ডিজাইন/প্রিনট" in inspection_mode:
@@ -249,7 +263,7 @@ with st.container(border=True):
                         final_score = texture_pct
                     elif "কালার + ডিজাইন" in inspection_mode:
                         final_score = (color_pct * 0.40) + (pattern_pct * 0.30) + (ssim_pct * 0.30)
-                    else: # ফুল চেক
+                    else:
                         final_score = (color_pct * 0.25) + (pattern_pct * 0.25) + (ssim_pct * 0.30) + (texture_pct * 0.20)
                     
                     if final_score > best_match_score:
