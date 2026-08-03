@@ -40,6 +40,22 @@ if 'cam_key' not in st.session_state:
     st.session_state.cam_key = 0
 
 # ==========================================
+# 🚀 নতুন: Aspect Ratio ঠিক রেখে রিসাইজ ফাংশন
+# ==========================================
+def resize_with_aspect_ratio(image, width=None, height=None, inter=cv2.INTER_AREA):
+    dim = None
+    (h, w) = image.shape[:2]
+    if width is None and height is None:
+        return image
+    if width is None:
+        r = height / float(h)
+        dim = (int(w * r), height)
+    else:
+        r = width / float(w)
+        dim = (width, int(h * r))
+    return cv2.resize(image, dim, interpolation=inter)
+
+# ==========================================
 # সাইডবার: সেটিংস ও মোড
 # ==========================================
 st.sidebar.header("⚙️ Settings & Modes")
@@ -106,7 +122,7 @@ with st.container(border=True):
                 st.session_state.last_cam_hash = cam_bytes
                 
         if len(st.session_state.captured_benchmarks) > 0:
-            st.info(f"📸 তোলা হয়েছে: {len(st.session_state.captured_benchmarks)} টি স্যাম্পল")
+            st.info(f"📸 তোলা হয়েছে: {len(st.session_state.captured_benchmarks)} টি স্যাম্পল")
             col_save1, col_save2, col_save3 = st.columns(3)
             with col_save1:
                 if st.button("➕ বর্তমান স্যাম্পলের সাথে যোগ করুন", use_container_width=True):
@@ -114,7 +130,7 @@ with st.container(border=True):
                     for i, img_bytes in enumerate(st.session_state.captured_benchmarks):
                         with open(os.path.join(BENCHMARK_DIR, f"master_cam_{existing_count + i + 1}.jpg"), "wb") as f: f.write(img_bytes)
                     st.session_state.captured_benchmarks = []; st.session_state.cam_key += 1
-                    st.success("✅ যোগ করা হয়েছে!")
+                    st.success("✅ যোগ করা হয়েছে!")
                     time.sleep(1)
                     st.rerun()
             with col_save2:
@@ -123,7 +139,7 @@ with st.container(border=True):
                     for i, img_bytes in enumerate(st.session_state.captured_benchmarks):
                         with open(os.path.join(BENCHMARK_DIR, f"master_cam_{i+1}.jpg"), "wb") as f: f.write(img_bytes)
                     st.session_state.captured_benchmarks = []; st.session_state.cam_key += 1
-                    st.success("✅ নতুন সেভ হয়েছে!")
+                    st.success("✅ নতুন সেভ হয়েছে!")
                     time.sleep(1)
                     st.rerun()
             with col_save3:
@@ -181,6 +197,22 @@ def get_image_features(image):
     return hist_flat, des, laplacian_var, edge_density, gray
 
 # ==========================================
+# 🚀 নতুন: ক্যাশিং ফাংশন (অ্যাপ ফাস্ট করার জন্য)
+# ==========================================
+@st.cache_data(show_spinner=False)
+def load_cached_benchmarks(file_list, bench_dir):
+    data = []
+    for b_file in file_list:
+        b_path = os.path.join(bench_dir, b_file)
+        img = cv2.imread(b_path)
+        if img is not None:
+            # Aspect Ratio ঠিক রেখে রিসাইজ করা হলো
+            img = resize_with_aspect_ratio(img, width=500)
+            b_hist, b_des, b_lap, b_edge, b_gray = get_image_features(img)
+            data.append((b_file, b_path, b_hist, b_des, b_lap, b_edge, b_gray))
+    return data
+
+# ==========================================
 # মেইন পেজ - ধাপ ২: টেস্টিং স্ক্যানার
 # ==========================================
 st.markdown("""
@@ -195,21 +227,15 @@ with st.container(border=True):
     if not final_benchmark_files:
         st.error("⚠️ টেস্টিং শুরু করার আগে উপরে মাস্টার স্যাম্পল সেভ করুন।")
     else:
-        benchmark_data = []
-        for b_file in final_benchmark_files:
-            b_path = os.path.join(BENCHMARK_DIR, b_file)
-            img = cv2.imread(b_path)
-            if img is not None:
-                img = cv2.resize(img, (500, 500))
-                b_hist, b_des, b_lap, b_edge, b_gray = get_image_features(img)
-                benchmark_data.append((b_file, b_path, b_hist, b_des, b_lap, b_edge, b_gray))
+        # Caching ফাংশন ব্যবহার করে ডেটা লোড
+        benchmark_data = load_cached_benchmarks(tuple(final_benchmark_files), BENCHMARK_DIR)
 
         col_test1, col_test2 = st.columns([1, 1.2])
         
         with col_test1:
             input_method = st.radio("কীভাবে স্ক্যান করবেন?", ("📁 গ্যালারি / ব্যাক ক্যামেরা", "🔴 লাইভ ক্যামেরা"), horizontal=True)
             if input_method == "📁 গ্যালারি / ব্যাক ক্যামেরা":
-                camera_image = st.file_uploader("টেস্টিংয়ের ছবি দিন", type=['png', 'jpg', 'jpeg'], key="test_upload")
+                camera_image = st.file_uploader("টেস্টিংয়ের ছবি দিন", type=['png', 'jpg', 'jpeg'], key="test_upload", accept_multiple_files=False)
             else:
                 camera_image = st.camera_input("লাইভ স্ক্যান করুন", key="test_cam")
             
@@ -217,7 +243,10 @@ with st.container(border=True):
             if camera_image:
                 bytes_data = camera_image.getvalue()
                 cv_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
-                cv_img = cv2.resize(cv_img, (500, 500))
+                
+                # Aspect Ratio ঠিক রেখে রিসাইজ করা হলো
+                cv_img = resize_with_aspect_ratio(cv_img, width=500)
+                
                 cam_hist, cam_des, cam_lap, cam_edge, cam_gray = get_image_features(cv_img)
                 
                 best_match_score = 0.0
