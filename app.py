@@ -40,7 +40,7 @@ if 'cam_key' not in st.session_state:
     st.session_state.cam_key = 0
 
 # ==========================================
-# 🚀 নতুন: Aspect Ratio ঠিক রেখে রিসাইজ ফাংশন
+# Aspect Ratio ঠিক রেখে রিসাইজ ফাংশন
 # ==========================================
 def resize_with_aspect_ratio(image, width=None, height=None, inter=cv2.INTER_AREA):
     dim = None
@@ -170,21 +170,22 @@ def get_image_features(image):
     h, w = image.shape[:2]
     
     # ১. ৩×৩ স্পেশিয়াল কালার গ্রিড (৯টি সেক্টরে নিখুঁত কালার চেক)
-    h_step, w_step = h // 3, w // 3
+    h_step, w_step = max(1, h // 3), max(1, w // 3)
     hist_features = []
     
     for i in range(3):
         for j in range(3):
             sub_crop = image[i*h_step:(i+1)*h_step, j*w_step:(j+1)*w_step]
-            blur = cv2.GaussianBlur(sub_crop, (7, 7), 0)
-            lab = cv2.cvtColor(blur, cv2.COLOR_BGR2LAB)
-            hist = cv2.calcHist([lab], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
-            cv2.normalize(hist, hist)
-            hist_features.extend(hist.flatten())
+            if sub_crop.size > 0:
+                blur = cv2.GaussianBlur(sub_crop, (7, 7), 0)
+                lab = cv2.cvtColor(blur, cv2.COLOR_BGR2LAB)
+                hist = cv2.calcHist([lab], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+                cv2.normalize(hist, hist)
+                hist_features.extend(hist.flatten())
             
     hist_flat = np.array(hist_features, dtype=np.float32)
 
-    # ২. SIFT ফিচার এক্সট্রাকশন (প্যাটার্ন ও রিপিটিং প্রিন্টের জন্য)
+    # ২. SIFT ফিচার এক্সট্রাকশন
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     sift = cv2.SIFT_create(nfeatures=1500)
     kp, des = sift.detectAndCompute(gray, None)
@@ -197,7 +198,7 @@ def get_image_features(image):
     return hist_flat, des, laplacian_var, edge_density, gray
 
 # ==========================================
-# 🚀 নতুন: ক্যাশিং ফাংশন (অ্যাপ ফাস্ট করার জন্য)
+# 🚀 ক্যাশিং ফাংশন (মাস্টার স্যাম্পল প্রসেসিং ফাস্ট করতে)
 # ==========================================
 @st.cache_data(show_spinner=False)
 def load_cached_benchmarks(file_list, bench_dir):
@@ -206,7 +207,7 @@ def load_cached_benchmarks(file_list, bench_dir):
         b_path = os.path.join(bench_dir, b_file)
         img = cv2.imread(b_path)
         if img is not None:
-            # Aspect Ratio ঠিক রেখে রিসাইজ করা হলো
+            # Aspect Ratio ঠিক রেখে ৫শ পিক্সেল চওড়া করা হচ্ছে
             img = resize_with_aspect_ratio(img, width=500)
             b_hist, b_des, b_lap, b_edge, b_gray = get_image_features(img)
             data.append((b_file, b_path, b_hist, b_des, b_lap, b_edge, b_gray))
@@ -227,7 +228,7 @@ with st.container(border=True):
     if not final_benchmark_files:
         st.error("⚠️ টেস্টিং শুরু করার আগে উপরে মাস্টার স্যাম্পল সেভ করুন।")
     else:
-        # Caching ফাংশন ব্যবহার করে ডেটা লোড
+        # ডেটা ক্যাশ থেকে কল করা হচ্ছে (এতে প্রতিবার ছবি প্রসেস হবে না, অ্যাপ দ্রুত চলবে)
         benchmark_data = load_cached_benchmarks(tuple(final_benchmark_files), BENCHMARK_DIR)
 
         col_test1, col_test2 = st.columns([1, 1.2])
@@ -235,6 +236,7 @@ with st.container(border=True):
         with col_test1:
             input_method = st.radio("কীভাবে স্ক্যান করবেন?", ("📁 গ্যালারি / ব্যাক ক্যামেরা", "🔴 লাইভ ক্যামেরা"), horizontal=True)
             if input_method == "📁 গ্যালারি / ব্যাক ক্যামেরা":
+                # accept_multiple_files=False যুক্ত করে অ্যাপ ক্র্যাশ প্রতিরোধ করা হয়েছে
                 camera_image = st.file_uploader("টেস্টিংয়ের ছবি দিন", type=['png', 'jpg', 'jpeg'], key="test_upload", accept_multiple_files=False)
             else:
                 camera_image = st.camera_input("লাইভ স্ক্যান করুন", key="test_cam")
@@ -244,41 +246,33 @@ with st.container(border=True):
                 bytes_data = camera_image.getvalue()
                 cv_img = cv2.imdecode(np.frombuffer(bytes_data, np.uint8), cv2.IMREAD_COLOR)
                 
-                # Aspect Ratio ঠিক রেখে রিসাইজ করা হলো
+                # টেস্ট ছবিটিরও রেশিও ঠিক রেখে রিসাইজ করা হচ্ছে
                 cv_img = resize_with_aspect_ratio(cv_img, width=500)
-                
                 cam_hist, cam_des, cam_lap, cam_edge, cam_gray = get_image_features(cv_img)
                 
                 best_match_score = 0.0
                 best_match_path, best_match_name = "", ""
                 
-                # FLANN Matcher
-                index_params = dict(algorithm=1, trees=5)
-                search_params = dict(checks=50)
-                flann = cv2.FlannBasedMatcher(index_params, search_params)
+                flann = cv2.FlannBasedMatcher(dict(algorithm=1, trees=5), dict(checks=50))
                 
                 for name, b_path, b_hist, b_des, b_lap, b_edge, b_gray in benchmark_data:
                     # ১. Color Score
                     color_score = cv2.compareHist(b_hist, cam_hist, cv2.HISTCMP_CORREL)
                     color_pct = max(0.0, color_score * 100.0)
                     
-                    # ২. Pattern Score
+                    # ২. Pattern Score (SIFT)
                     pattern_pct = 0.0
                     if b_des is not None and cam_des is not None and len(b_des) >= 2 and len(cam_des) >= 2:
                         try:
                             matches = flann.knnMatch(b_des, cam_des, k=2)
-                            good_matches = []
-                            for match_pair in matches:
-                                if len(match_pair) == 2:
-                                    m, n = match_pair
-                                    if m.distance < 0.75 * n.distance:
-                                        good_matches.append(m)
+                            good_matches = [m for match_pair in matches if len(match_pair) == 2 for m, n in [match_pair] if m.distance < 0.75 * n.distance]
                             pattern_pct = min(100.0, (len(good_matches) / 50.0) * 100.0)
                         except Exception:
                             pattern_pct = 0.0
                     
-                    # ৩. Structural Score
-                    score_ssim, _ = ssim(b_gray, cam_gray, full=True)
+                    # ৩. Structural Score (SSIM ক্র্যাশ ফিক্স - ডাইনামিক রিসাইজ)
+                    cam_gray_resized = cv2.resize(cam_gray, (b_gray.shape[1], b_gray.shape[0]))
+                    score_ssim, _ = ssim(b_gray, cam_gray_resized, full=True)
                     ssim_pct = max(0.0, score_ssim * 100.0)
                     
                     # ৪. Texture Score
